@@ -33,12 +33,12 @@ trainer:
   default_root_dir: checkpoints/segment
   fast_dev_run: False
   num_sanity_val_steps: 0
-  logger:
-    - class_path: lightning.pytorch.loggers.WandbLogger
-      init_args:
-        project: clay-segment
-        log_model: false
-        name: chesapeake-7class-segment-clay
+#  logger:
+#    - class_path: lightning.pytorch.loggers.WandbLogger
+#      init_args:
+#        project: clay-segment
+#        log_model: false
+#        name: chesapeake-7class-segment-clay
   callbacks:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
