@@ -10,13 +10,11 @@ data:
   num_workers: 8
   platform: naip
 model:
+  model_arch: unet
+  encoder_name: resnet50
+  encoder_weights: imagenet
   num_classes: 7
-  feature_maps:
-    - 3
-    - 5
-    - 7
-    - 11
-  ckpt_path: checkpoints/clay-v1-base.ckpt
+  in_channels: 4
   lr: 1e-5
   wd: 0.05
   b1: 0.9
@@ -26,7 +24,7 @@ trainer:
   strategy: ddp
   devices: auto
   num_nodes: 1
-  precision: bf16-mixed
+  precision: 16-mixed
   log_every_n_steps: 5
   max_epochs: 10
   accumulate_grad_batches: 1
@@ -36,15 +34,16 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
+        entity: developmentseed
         project: clay-segment
         log_model: false
-        name: chesapeake-7class-segment-clay
+        name: chesapeake-7class-segment-unet-imagenet
   callbacks:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         dirpath: checkpoints/segment
         auto_insert_metric_name: False
-        filename: chesapeake-7class-segment_epoch-{epoch:02d}_val-iou-{val/iou:.4f}
+        filename: chesapeake-7class-segment-unet-imagenet_epoch-{epoch:02d}_val-iou-{val/iou:.4f}
         monitor: val/iou
         mode: max
         save_last: True

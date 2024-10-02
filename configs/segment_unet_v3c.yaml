@@ -1,22 +1,20 @@
 # lightning.pytorch==2.1.2
 seed_everything: 42
 data:
-  train_chip_dir: data/cvpr/ny/train/chips/
-  train_label_dir: data/cvpr/ny/train/labels/
-  val_chip_dir: data/cvpr/ny/val/chips/
-  val_label_dir: data/cvpr/ny/val/labels/
+  train_chip_dir: data/multiobject-v3c/train/orto/
+  train_label_dir: data/multiobject-v3c/train/masks/
+  val_chip_dir: data/multiobject-v3c/validation/orto/
+  val_label_dir: data/multiobject-v3c/validation/masks/
   metadata_path: configs/metadata.yaml
   batch_size: 40
   num_workers: 8
-  platform: naip
+  platform: linz
 model:
-  num_classes: 7
-  feature_maps:
-    - 3
-    - 5
-    - 7
-    - 11
-  ckpt_path: checkpoints/clay-v1-base.ckpt
+  model_arch: unet
+  encoder_name: resnet50
+  encoder_weights: imagenet
+  num_classes: 8
+  in_channels: 3
   lr: 1e-5
   wd: 0.05
   b1: 0.9
@@ -26,7 +24,7 @@ trainer:
   strategy: ddp
   devices: auto
   num_nodes: 1
-  precision: bf16-mixed
+  precision: 16-mixed
   log_every_n_steps: 5
   max_epochs: 10
   accumulate_grad_batches: 1
@@ -36,15 +34,16 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
+        entity: developmentseed
         project: clay-segment
         log_model: false
-        name: chesapeake-7class-segment-clay
+        name: v3c-segment-unet-imagenet
   callbacks:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         dirpath: checkpoints/segment
         auto_insert_metric_name: False
-        filename: chesapeake-7class-segment_epoch-{epoch:02d}_val-iou-{val/iou:.4f}
+        filename: multiobjectv3c-8class-segment-unet-imagenet_epoch-{epoch:02d}_val-iou-{val/iou:.4f}
         monitor: val/iou
         mode: max
         save_last: True
