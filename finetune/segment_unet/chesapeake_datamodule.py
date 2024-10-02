@@ -41,8 +41,8 @@ class ChesapeakeDataset(Dataset):
         self.label_dir = Path(label_dir)
         self.metadata = metadata
         # get imagenet mean and std
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
+        mean = [0.485, 0.456, 0.406, 0.406]
+        std = [0.229, 0.224, 0.225, 0.225]
         self.transform = self.create_transforms(
             mean=mean,
             std=std,
