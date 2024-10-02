@@ -21,7 +21,7 @@ def cli_main():
     """
     Command-line inteface to run Segmentation Model with ChesapeakeDataModule.
     """
-    cli = LightningCLI(MultiobjectV3CSegmentor, MultiobjectV3CDataModule)
+    cli = LightningCLI(MultiobjectV3CSegmentor, MultiobjectV3CDataModule, save_config_kwargs={"overwrite": True})
     return cli
 
 
