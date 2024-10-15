@@ -14,7 +14,8 @@ from einops import rearrange, repeat
 from torch import nn
 
 from src.model import Encoder
-
+from segmentation_models_pytorch.decoders.unet.decoder import UnetDecoder
+import segmentation_models_pytorch as smp
 
 class SegmentEncoder(Encoder):
     """
@@ -158,11 +159,6 @@ class SegmentEncoder(Encoder):
         _cube = rearrange(patches[:, 1:, :], "B (H W) D -> B D H W", H=H // 8, W=W // 8)
         features.append(_cube)
 
-        # Apply FPN layers
-        ops = [self.fpn1, self.fpn2, self.fpn3, self.fpn4, self.fpn5]
-        for i in range(len(features)):
-            features[i] = ops[i](features[i])
-
         return features
 
 
@@ -180,11 +176,12 @@ class Segmentor(nn.Module):
     def __init__(self, num_classes, feature_maps, ckpt_path):
         super().__init__()
         # Default values are for the clay mae base model.
+        dim = 768
         self.encoder = SegmentEncoder(
             mask_ratio=0.0,
             patch_size=8,
             shuffle=False,
-            dim=768,
+            dim=dim,
             depth=12,
             heads=12,
             dim_head=64,
@@ -192,11 +189,49 @@ class Segmentor(nn.Module):
             feature_maps=feature_maps,
             ckpt_path=ckpt_path,
         )
-        self.upsamples = [nn.Upsample(scale_factor=2**i) for i in range(4)] + [
-            nn.Upsample(scale_factor=4),
-        ]
-        self.fusion = nn.Conv2d(self.encoder.dim * 5, self.encoder.dim, kernel_size=1)
-        self.seg_head = nn.Conv2d(self.encoder.dim, num_classes, kernel_size=1)
+        self.fpn1 = nn.Sequential(
+            nn.ConvTranspose2d(dim, dim, kernel_size=2, stride=2),
+            nn.BatchNorm2d(dim),
+            nn.GELU(),
+            nn.ConvTranspose2d(dim, dim, kernel_size=2, stride=2),
+            nn.BatchNorm2d(dim),
+            nn.GELU(),
+            nn.ConvTranspose2d(dim, dim, kernel_size=2, stride=2),
+        )
+
+        self.fpn2 = nn.Sequential(
+            nn.ConvTranspose2d(dim, dim, kernel_size=2, stride=2),
+            nn.BatchNorm2d(dim),
+            nn.GELU(),
+            nn.ConvTranspose2d(dim, dim, kernel_size=2, stride=2),
+        )
+
+        self.fpn3 = nn.Sequential(
+            nn.ConvTranspose2d(dim, dim, kernel_size=2, stride=2),
+        )
+
+        self.fpn4 = nn.Identity()
+
+        self.fpn5 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+
+        self.decoder_channels = [256, 128, 64, 32]
+        self._out_channels = [self.encoder.dim] * 5
+        self.decoder = UnetDecoder(
+            encoder_channels=self._out_channels,
+            decoder_channels=self.decoder_channels,
+            n_blocks=len(self.decoder_channels),
+            use_batchnorm=True,
+            center=False,
+            attention_type=None,
+        )
+
+        self.segmentation_head = smp.base.SegmentationHead(
+            in_channels=self.decoder_channels[-1],
+            out_channels=num_classes,
+            kernel_size=3,
+        )
 
     def forward(self, datacube):
         """
@@ -210,11 +245,11 @@ class Segmentor(nn.Module):
             torch.Tensor: The segmentation logits.
         """
         features = self.encoder(datacube)
+        features = features[::-1]
+        ops = [self.fpn1, self.fpn2, self.fpn3, self.fpn4, self.fpn5]
         for i in range(len(features)):
-            features[i] = self.upsamples[i](features[i])
+            features[i] = ops[i](features[i])
 
-        fused = torch.cat(features, dim=1)
-        fused = self.fusion(fused)
-
-        logits = self.seg_head(fused)
+        decoder_output = self.decoder(*features)
+        logits = self.segmentation_head(decoder_output)
         return logits

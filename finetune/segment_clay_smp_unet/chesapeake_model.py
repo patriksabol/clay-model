@@ -10,10 +10,10 @@ import torch.nn.functional as F
 from torch import optim
 from torchmetrics.classification import F1Score, MulticlassJaccardIndex
 
-from finetune.segment_custom_data.factory import Segmentor
+from finetune.segment_clay_smp_unet.factory import Segmentor
 
 
-class MultiobjectV3CSegmentor(L.LightningModule):
+class ChesapeakeSegmentor(L.LightningModule):
     """
     LightningModule for segmentation tasks, utilizing Clay Segmentor.
 
@@ -65,8 +65,8 @@ class MultiobjectV3CSegmentor(L.LightningModule):
         Returns:
             torch.Tensor: The segmentation logits.
         """
-        waves = torch.tensor([0.635, 0.555, 0.465])  # LINZ wavelengths
-        gsd = torch.tensor(0.5)  # LINZ GSD
+        waves = torch.tensor([0.65, 0.56, 0.48, 0.842])  # NAIP wavelengths
+        gsd = torch.tensor(1.0)  # NAIP GSD
 
         # Forward pass through the network
         return self.model(

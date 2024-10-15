@@ -12,8 +12,8 @@ References:
 
 from lightning.pytorch.cli import LightningCLI
 
-from finetune.segment_unet.chesapeake_datamodule import ChesapeakeDataModule  # noqa: F401
-from finetune.segment_unet.chesapeake_model import ChesapeakeSegmentor  # noqa: F401
+from finetune.segment_clay_smp_unet.chesapeake_datamodule import ChesapeakeDataModule  # noqa: F401
+from finetune.segment_clay_smp_unet.chesapeake_model import ChesapeakeSegmentor  # noqa: F401
 
 
 # %%

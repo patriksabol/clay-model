@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import optim
 from torchmetrics.classification import F1Score, MulticlassJaccardIndex
 
-from finetune.segment_smp.factory import Segmentor
+from finetune.segment_clay_fpn.factory import Segmentor
 
 
 class ChesapeakeSegmentor(L.LightningModule):

@@ -26,9 +26,9 @@ trainer:
   num_nodes: 1
   precision: 16-mixed
   log_every_n_steps: 5
-  max_epochs: 10
+  max_epochs: 30
   accumulate_grad_batches: 1
-  default_root_dir: checkpoints/segment
+  default_root_dir: finetune/segment_smp_unet/checkpoints/
   fast_dev_run: False
   num_sanity_val_steps: 0
 #  logger:
@@ -40,9 +40,9 @@ trainer:
   callbacks:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
-        dirpath: checkpoints/segment
+        dirpath: finetune/segment_smp_unet/checkpoints/
         auto_insert_metric_name: False
-        filename: chesapeake-7class-segment-unet-imagenet_epoch-{epoch:02d}_val-iou-{val/iou:.4f}
+        filename: model-{epoch:02d}_val-iou-{val/iou:.4f}
         monitor: val/iou
         mode: max
         save_last: True

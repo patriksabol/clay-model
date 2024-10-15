@@ -154,6 +154,13 @@ class ChesapeakeDataModule(L.LightningDataModule):
                 self.metadata,
                 self.platform,
             )
+        if stage == "validate":
+            self.val_ds = ChesapeakeDataset(
+                self.val_chip_dir,
+                self.val_label_dir,
+                self.metadata,
+                self.platform,
+            )
 
     def train_dataloader(self):
         """

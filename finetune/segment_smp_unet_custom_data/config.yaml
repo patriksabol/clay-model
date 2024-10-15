@@ -1,0 +1,56 @@
+# lightning.pytorch==2.1.2
+seed_everything: 42
+data:
+  train_chip_dir: data/multiobject-v3c/train/orto/
+  train_label_dir: data/multiobject-v3c/train/masks/
+  val_chip_dir: data/multiobject-v3c/validation/orto/
+  val_label_dir: data/multiobject-v3c/validation/masks/
+  metadata_path: configs/metadata.yaml
+  batch_size: 40
+  num_workers: 8
+  platform: linz
+model:
+  model_arch: unet
+  encoder_name: resnet50
+  encoder_weights: imagenet
+  num_classes: 8
+  in_channels: 3
+  lr: 1e-5
+  wd: 0.05
+  b1: 0.9
+  b2: 0.95
+trainer:
+  accelerator: auto
+  strategy: ddp
+  devices: auto
+  num_nodes: 1
+  precision: 16-mixed
+  log_every_n_steps: 5
+  max_epochs: 30
+  accumulate_grad_batches: 1
+  default_root_dir: finetune/segment_smp_unet_custom_data/checkpoints/
+  fast_dev_run: False
+  num_sanity_val_steps: 0
+#  logger:
+#    - class_path: lightning.pytorch.loggers.WandbLogger
+#      init_args:
+#        project: clay-segment
+#        log_model: false
+#        name: v3c-segment-unet-imagenet
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: finetune/segment_smp_unet_custom_data/checkpoints/
+        auto_insert_metric_name: False
+        filename: model-{epoch:02d}_val-iou-{val/iou:.4f}
+        monitor: val/iou
+        mode: max
+        save_last: True
+        save_top_k: 2
+        save_weights_only: True
+        verbose: True
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: step
+  plugins:
+    - class_path: lightning.pytorch.plugins.io.AsyncCheckpointIO

@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 
 
-class MultiobjectV3CDataset(Dataset):
+class ChesapeakeDataset(Dataset):
     """
     Dataset class for the Chesapeake Bay segmentation dataset.
 
@@ -47,7 +47,7 @@ class MultiobjectV3CDataset(Dataset):
 
         # Load chip and label file names
         self.chips = [chip_path.name for chip_path in self.chip_dir.glob("*.npy")]
-        self.labels = [label_path.name for label_path in self.label_dir.glob("*.npy")]
+        self.labels = [re.sub("_naip-new_", "_lc_", chip) for chip in self.chips]
 
     def create_transforms(self, mean, std):
         """
@@ -83,18 +83,22 @@ class MultiobjectV3CDataset(Dataset):
         label_name = self.label_dir / self.labels[idx]
 
         chip = np.load(chip_name).astype(np.float32)
-        label = np.load(label_name).astype(np.float32)
+        label = np.load(label_name)
+
+        # Remap labels to match desired classes
+        label_mapping = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 15: 6}
+        remapped_label = np.vectorize(label_mapping.get)(label)
 
         sample = {
             "pixels": self.transform(torch.from_numpy(chip)),
-            "label": torch.from_numpy(label[0]),
+            "label": torch.from_numpy(remapped_label[0]),
             "time": torch.zeros(4),  # Placeholder for time information
             "latlon": torch.zeros(4),  # Placeholder for latlon information
         }
         return sample
 
 
-class MultiobjectV3CDataModule(L.LightningDataModule):
+class ChesapeakeDataModule(L.LightningDataModule):
     """
     DataModule class for the Chesapeake Bay dataset.
 
@@ -138,13 +142,21 @@ class MultiobjectV3CDataModule(L.LightningDataModule):
             stage (str): Stage identifier ('fit' or 'test').
         """
         if stage in {"fit", None}:
-            self.trn_ds = MultiobjectV3CDataset(
+            self.trn_ds = ChesapeakeDataset(
                 self.train_chip_dir,
                 self.train_label_dir,
                 self.metadata,
                 self.platform,
             )
-            self.val_ds = MultiobjectV3CDataset(
+            self.val_ds = ChesapeakeDataset(
+                self.val_chip_dir,
+                self.val_label_dir,
+                self.metadata,
+                self.platform,
+            )
+        # stage validation
+        if stage == "validate":
+            self.val_ds = ChesapeakeDataset(
                 self.val_chip_dir,
                 self.val_label_dir,
                 self.metadata,

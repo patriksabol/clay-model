@@ -12,8 +12,8 @@ References:
 
 from lightning.pytorch.cli import LightningCLI
 
-from finetune.segment_unet_custom_data.v3c_datamodule import MultiobjectV3CDataModule  # noqa: F401
-from finetune.segment_unet_custom_data.v3c_model import MultiobjectV3CSegmentor  # noqa: F401
+from finetune.segment_clay_fpn_custom_data.v3c_datamodule import MultiobjectV3CDataModule  # noqa: F401
+from finetune.segment_clay_fpn_custom_data.v3c_model import MultiobjectV3CSegmentor  # noqa: F401
 
 
 # %%
