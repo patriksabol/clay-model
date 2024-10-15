@@ -44,6 +44,9 @@ class MultiobjectV3CDataset(Dataset):
             mean=list(metadata[platform].bands.mean.values()),
             std=list(metadata[platform].bands.std.values()),
         )
+        self.platform = platform
+        self.gsd = self.metadata[self.platform].gsd
+        self.waves = list(self.metadata[self.platform].bands['wavelength'].values())
 
         # Load chip and label file names
         self.chips = [chip_path.name for chip_path in self.chip_dir.glob("*.npy")]
@@ -84,6 +87,7 @@ class MultiobjectV3CDataset(Dataset):
 
         chip = np.load(chip_name).astype(np.float32)
         label = np.load(label_name).astype(np.float32)
+
 
         sample = {
             "pixels": self.transform(torch.from_numpy(chip)),

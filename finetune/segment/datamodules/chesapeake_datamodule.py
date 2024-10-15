@@ -44,7 +44,9 @@ class ChesapeakeDataset(Dataset):
             mean=list(metadata[platform].bands.mean.values()),
             std=list(metadata[platform].bands.std.values()),
         )
-
+        self.platform = platform
+        self.gsd = self.metadata[self.platform].gsd
+        self.waves = list(self.metadata[self.platform].bands['wavelength'].values())
         # Load chip and label file names
         self.chips = [chip_path.name for chip_path in self.chip_dir.glob("*.npy")]
         self.labels = [re.sub("_naip-new_", "_lc_", chip) for chip in self.chips]
