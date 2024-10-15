@@ -8,9 +8,9 @@ data:
   metadata_path: configs/metadata.yaml
   batch_size: 8
   num_workers: 8
-  platform: naip
+  platform: linz
 model:
-  num_classes: 7
+  num_classes: 8
   feature_maps:
     - 3
     - 5
