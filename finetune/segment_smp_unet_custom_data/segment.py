@@ -12,8 +12,8 @@ References:
 
 from lightning.pytorch.cli import LightningCLI
 
-from finetune.segment_smp_unet_custom_data.v3c_datamodule import MultiobjectV3CDataModule  # noqa: F401
-from finetune.segment_smp_unet_custom_data.v3c_model import MultiobjectV3CSegmentor  # noqa: F401
+from finetune.segment.datamodules.v3c_datamodule import MultiobjectV3CDataModule  # noqa: F401
+from finetune.segment.models.smp_unet.model import LightingSegmentor  # noqa: F401
 
 
 # %%
@@ -21,7 +21,7 @@ def cli_main():
     """
     Command-line inteface to run Segmentation Model with ChesapeakeDataModule.
     """
-    cli = LightningCLI(MultiobjectV3CSegmentor, MultiobjectV3CDataModule, save_config_kwargs={"overwrite": True})
+    cli = LightningCLI(LightingSegmentor, MultiobjectV3CDataModule, save_config_kwargs={"overwrite": True})
     return cli
 
 

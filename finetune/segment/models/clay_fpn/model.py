@@ -10,7 +10,10 @@ import torch.nn.functional as F
 from torch import optim
 from torchmetrics.classification import F1Score, MulticlassJaccardIndex
 
-class MultiobjectV3CSegmentor(L.LightningModule):
+from finetune.segment.models.clay_fpn.factory import Segmentor
+
+
+class LightingSegmentor(L.LightningModule):
     """
     LightningModule for segmentation tasks, utilizing Clay Segmentor.
 
@@ -23,18 +26,21 @@ class MultiobjectV3CSegmentor(L.LightningModule):
     """
 
     def __init__(  # # noqa: PLR0913
-        self, model_arch, encoder_name, encoder_weights, num_classes, in_channels, lr, wd, b1, b2
+        self,
+        num_classes,
+        feature_maps,
+        ckpt_path,
+        lr,
+        wd,
+        b1,
+        b2,
     ):
         super().__init__()
         self.save_hyperparameters()  # Save hyperparameters for checkpointing
-        # Create the segmentation model using SMP
-        self.model = smp.create_model(
-            arch=model_arch,
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            classes=num_classes,
-            in_channels=in_channels,
-            activation=None,  # No activation since we're using logits
+        self.model = Segmentor(
+            num_classes=num_classes,
+            feature_maps=feature_maps,
+            ckpt_path=ckpt_path,
         )
 
         self.loss_fn = smp.losses.FocalLoss(mode="multiclass")
@@ -59,11 +65,19 @@ class MultiobjectV3CSegmentor(L.LightningModule):
         Returns:
             torch.Tensor: The segmentation logits.
         """
-        # Extract the relevant data from the datacube
-        pixels = datacube["pixels"]  # The input image data
+        waves = torch.tensor([0.65, 0.56, 0.48, 0.842])  # NAIP wavelengths
+        gsd = torch.tensor(1.0)  # NAIP GSD
 
-        # Forward pass through the model
-        return self.model(pixels)
+        # Forward pass through the network
+        return self.model(
+            {
+                "pixels": datacube["pixels"],
+                "time": datacube["time"],
+                "latlon": datacube["latlon"],
+                "gsd": gsd,
+                "waves": waves,
+            },
+        )
 
     def configure_optimizers(self):
         """
