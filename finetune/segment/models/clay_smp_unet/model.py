@@ -65,16 +65,14 @@ class LightingSegmentor(L.LightningModule):
         Returns:
             torch.Tensor: The segmentation logits.
         """
-        gsd = self.trainer.datamodule.trn_ds.gsd
-        waves = self.trainer.datamodule.trn_ds.waves
         # Forward pass through the network
         return self.model(
             {
                 "pixels": datacube["pixels"],
                 "time": datacube["time"],
                 "latlon": datacube["latlon"],
-                "gsd": torch.tensor(gsd),
-                "waves": torch.tensor(waves),
+                "gsd": datacube["gsd"][0].to('cpu'),
+                "waves": datacube["waves"][0].to('cpu'),
             },
         )
 

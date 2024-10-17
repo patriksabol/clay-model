@@ -94,6 +94,8 @@ class MultiobjectV3CDataset(Dataset):
             "label": torch.from_numpy(label[0]),
             "time": torch.zeros(4),  # Placeholder for time information
             "latlon": torch.zeros(4),  # Placeholder for latlon information
+            "gsd": torch.tensor(self.gsd),
+            "waves": torch.tensor(self.waves),
         }
         return sample
 
