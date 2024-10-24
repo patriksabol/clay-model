@@ -210,6 +210,8 @@ class LightingSegmentor(L.LightningModule):
         self.log(f"{phase}/seg_loss", seg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.log(f"{phase}/regression_loss", regression_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True,
                  sync_dist=True)
+        self.log(f"{phase}/regularization_loss", regularization_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True,
+                 sync_dist=True)
         self.log(f"{phase}/total_loss", total_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True,
                  sync_dist=True)
 
