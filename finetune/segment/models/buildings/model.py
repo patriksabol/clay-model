@@ -56,14 +56,16 @@ class LightingSegmentor(L.LightningModule):
 
         # Regression head
         self.regression_head = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(out_channels + 2,  # because concatenate segmentation features with shift vectors
+                      out_channels, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(out_channels, 2, kernel_size=3, padding=1),  # Output x_shift and y_shift
+            nn.Tanh()
         )
 
         # Loss functions
         self.segmentation_loss_fn = nn.BCEWithLogitsLoss()
-        self.regression_loss_fn = nn.MSELoss(reduction='none')  # We'll handle masking manually
+        self.regression_loss_fn = nn.SmoothL1Loss(reduction='none')  # We'll handle masking manually
 
         # Metrics
         self.iou = BinaryJaccardIndex()
@@ -97,11 +99,13 @@ class LightingSegmentor(L.LightningModule):
         x = sample["orto"]
         features = self.segmentation_model.encoder(x)
         decoder_output = self.segmentation_model.decoder(*features)
-        # Debug: Print shapes
 
+        # segmentation stuff
         segmentation_output = self.segmentation_model.segmentation_head(decoder_output)
-        regression_output = self.regression_head(decoder_output)
-        # Debug: Print output shapes
+        # regression stuff
+        segmentation_features = segmentation_output.clone().detach()
+        regression_input = torch.cat([decoder_output, segmentation_features], dim=1)
+        regression_output = self.regression_head(regression_input)
 
         return segmentation_output, regression_output
 
@@ -159,16 +163,28 @@ class LightingSegmentor(L.LightningModule):
         # Compute segmentation loss
         seg_loss = self.segmentation_loss_fn(segmentation_output, segmentation_targets)
 
-        # Compute regression loss only at rooftop pixels
-        rooftop_mask_unsqueezed = rooftop_mask.unsqueeze(1)  # Shape: (B, 1, H, W)
-        regression_loss = self.regression_loss_fn(regression_output, shift_vectors)
-        regression_loss = regression_loss * rooftop_mask_unsqueezed  # Mask the loss
+        # Apply sigmoid to get probabilities
+        seg_output_probs = torch.sigmoid(segmentation_output)
+        preds_rooftop_probs = seg_output_probs[:, 0, :, :]  # Assuming rooftop is at index 0
 
-        _, _, height, width = regression_loss.shape
-        regression_loss = regression_loss.sum() / (height * width)
+        # Binarize outputs for masking (threshold can be adjusted)
+        preds_rooftop_mask = (preds_rooftop_probs > 0.5).unsqueeze(1).float()  # Shape: (B, 1, H, W)
+
+        # Compute regression loss only at predicted rooftop pixels
+        regression_loss = self.regression_loss_fn(regression_output, shift_vectors)
+        regression_loss = regression_loss * preds_rooftop_mask  # Mask the loss with predicted mask
+
+        # Normalize the loss by the number of predicted rooftop pixels
+        num_pred_rooftop_pixels = preds_rooftop_mask.sum() + 1e-6  # Avoid division by zero
+        regression_loss = regression_loss.sum() / num_pred_rooftop_pixels
+
+        # regularization loss
+        non_rooftop_mask = 1.0 - preds_rooftop_mask
+        regression_output_magnitude = torch.norm(regression_output, dim=1, keepdim=True)
+        regularization_loss = (regression_output_magnitude * non_rooftop_mask).sum() / (non_rooftop_mask.sum() + 1e-6)
 
         # Total loss (you can adjust the weighting if needed)
-        total_loss = seg_loss + regression_loss
+        total_loss = seg_loss + regression_loss + 0.1 * regularization_loss
 
         # Compute metrics for segmentation
         # Apply sigmoid to get probabilities
