@@ -1,0 +1,51 @@
+# lightning.pytorch==2.1.2
+seed_everything: 42
+data:
+  train_root_dir: /home/patrik/data/outline_vs_footprint/inputs/test/dataset
+  val_root_dir: /home/patrik/data/outline_vs_footprint/inputs/test/dataset
+  batch_size: 4
+  num_workers: 8
+model:
+  model_arch: unet
+  encoder_name: resnet50
+  encoder_weights: imagenet
+  in_channels: 3
+  lr: 1e-5
+  wd: 0.05
+  b1: 0.9
+  b2: 0.95
+trainer:
+  accelerator: auto
+  strategy: ddp_find_unused_parameters_true
+  devices: auto
+  num_nodes: 1
+#  precision: 16-mixed
+  log_every_n_steps: 2
+  max_epochs: 200
+  accumulate_grad_batches: 1
+  default_root_dir: finetune/segment_buldings/checkpoints/
+  fast_dev_run: False
+  num_sanity_val_steps: 0
+#  logger:
+#    - class_path: lightning.pytorch.loggers.WandbLogger
+#      init_args:
+#        project: clay-segment
+#        log_model: false
+#        name: v3c-segment-unet-imagenet
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: finetune/segment_buldings/checkpoints/
+        auto_insert_metric_name: False
+        filename: model-{epoch:02d}_val-iou-{val/iou:.4f}
+        monitor: val/iou
+        mode: max
+        save_last: True
+        save_top_k: 2
+        save_weights_only: True
+        verbose: True
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: step
+  plugins:
+    - class_path: lightning.pytorch.plugins.io.AsyncCheckpointIO
