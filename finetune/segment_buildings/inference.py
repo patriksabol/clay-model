@@ -5,6 +5,8 @@ import yaml
 import rasterio
 from PIL import Image
 from matplotlib import pyplot as plt
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from finetune.segment.models.buildings.model import LightingSegmentor  # noqa: F401
 from torchvision.transforms import v2
 

@@ -119,11 +119,7 @@ class LightingSegmentor(L.LightningModule):
             configuration.
         """
         optimizer = optim.AdamW(
-            [
-                param
-                for name, param in self.segmentation_model.named_parameters()
-                if param.requires_grad
-            ],
+            self.parameters(),
             lr=self.hparams.lr,
             weight_decay=self.hparams.wd,
             betas=(self.hparams.b1, self.hparams.b2),
