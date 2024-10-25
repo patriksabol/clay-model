@@ -71,6 +71,9 @@ class LightingSegmentor(L.LightningModule):
         self.iou = BinaryJaccardIndex()
         self.f1 = BinaryF1Score()
 
+        self.val_visualization_idx = 0
+        self.val_visualization_num = 6
+
     @staticmethod
     def get_out_channels(module):
         """Method reused from
@@ -229,11 +232,13 @@ class LightingSegmentor(L.LightningModule):
                  sync_dist=True)
         self.log(f"{phase}/iou", avg_iou, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
-        # Log images to TensorBoard
-        if phase == "val" and batch_idx == 0:  # Log only for the first batch of each epoch in the validation phase
-            num_images = min(5, batch["orto"].size(0))
-
+        # Validation visualization loop
+        if phase == "val" and self.val_visualization_idx <= self.val_visualization_num:
+            num_images = min(self.val_visualization_num, batch["orto"].size(0))  # Visualize up to 5 images per batch
             for i in range(num_images):
+                if self.val_visualization_idx > self.val_visualization_num:
+                    break  # Exit the loop once we've visualized the specified number of images
+
                 # Denormalize image for visualization
                 original_image = batch["orto"][i].to("cpu")
                 original_image = original_image * torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1) + torch.tensor(
@@ -244,14 +249,16 @@ class LightingSegmentor(L.LightningModule):
                 building_mask = batch["label_building"][i].to("cpu")
                 preds_rooftop = (torch.sigmoid(segmentation_output[:, 0, :, :]) > 0.5).int().to("cpu")[i]
                 preds_building = (torch.sigmoid(segmentation_output[:, 1, :, :]) > 0.5).int().to("cpu")[i]
-                regression_output_img = regression_output[i].detach().cpu().numpy()
 
-                # Get shift vectors (ground truth for regression)
-                shift_vector_gt = shift_vectors[i].to("cpu").numpy()
+                regression_output_img = regression_output[i].detach().cpu()  # Use torch tensor
+                shift_vector_gt = shift_vectors[i].to("cpu")  # Use torch tensor
 
-                # Compute the angle for visualization
-                angle_gt = np.arctan2(shift_vector_gt[1], shift_vector_gt[0])  # Angle in radians for ground truth
-                angle_pred = np.arctan2(regression_output_img[1], regression_output_img[0])  # Angle for prediction
+                # Compute magnitude and angle using torch
+                shift_gt_magnitude = torch.norm(shift_vector_gt, dim=0)
+                angle_gt = torch.atan2(shift_vector_gt[1], shift_vector_gt[0])
+
+                predicted_shift_magnitude = torch.norm(regression_output_img, dim=0)
+                angle_pred = torch.atan2(regression_output_img[1], regression_output_img[0])
 
                 # Plot the original image
                 fig, axes = plt.subplots(2, 4, figsize=(20, 10))
@@ -265,60 +272,52 @@ class LightingSegmentor(L.LightningModule):
                 axes[0, 1].axis('off')
 
                 # Plot predicted rooftop mask
-                axes[0, 2].imshow(preds_rooftop.numpy(), cmap='gray')
-                axes[0, 2].set_title("Predicted Rooftop Mask")
-                axes[0, 2].axis('off')
-
-                # Plot ground truth building mask
-                axes[0, 3].imshow(building_mask.numpy(), cmap='gray')
-                axes[0, 3].set_title("Ground Truth Building Mask")
-                axes[0, 3].axis('off')
-
-                # Plot predicted building mask
-                axes[1, 1].imshow(preds_building.numpy(), cmap='gray')
-                axes[1, 1].set_title("Predicted Building Mask")
+                axes[1, 1].imshow(preds_rooftop.numpy(), cmap='gray')
+                axes[1, 1].set_title("Predicted Rooftop Mask")
                 axes[1, 1].axis('off')
 
-                # Plot ground truth shift vector magnitude with arrows and original image as background
-                axes[1, 2].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))  # Set original image as background
-                shift_gt_magnitude = np.linalg.norm(shift_vector_gt, axis=0)
-                im1 = axes[1, 2].imshow(shift_gt_magnitude, cmap='viridis',
-                                        alpha=0.6)  # Overlay magnitude with transparency
-                axes[1, 2].set_title("Ground Truth Shift Vectors")
-                fig.colorbar(im1, ax=axes[1, 2], fraction=0.046, pad=0.04)
+                # Plot ground truth building mask
+                axes[0, 2].imshow(building_mask.numpy(), cmap='gray')
+                axes[0, 2].set_title("Ground Truth Building Mask")
+                axes[0, 2].axis('off')
 
-                # Add arrows for ground truth shift direction
+                # Plot predicted building mask
+                axes[1, 2].imshow(preds_building.numpy(), cmap='gray')
+                axes[1, 2].set_title("Predicted Building Mask")
+                axes[1, 2].axis('off')
+
+                # Plot ground truth shift vector magnitude with arrows and original image as background
+                axes[0, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
+                im1 = axes[0, 3].imshow(shift_gt_magnitude.numpy(), cmap='viridis', alpha=0.6)
+                axes[0, 3].set_title("Ground Truth Shift Vectors")
+                fig.colorbar(im1, ax=axes[0, 3], fraction=0.046, pad=0.04)
+
                 # Add arrows for ground truth shift direction with transparency
-                step = 10  # Adjust step to control arrow density (5 plots every 5th pixel)
-                y, x = np.mgrid[0:shift_vector_gt.shape[1]:step, 0:shift_vector_gt.shape[2]:step]
-                axes[1, 2].quiver(
-                    x, y,
-                    np.cos(angle_gt[::step, ::step]),
-                    np.sin(angle_gt[::step, ::step]),
-                    scale=30,
-                    color="white",
-                    alpha=0.5  # Set transparency
+                step = 15  # Control arrow density
+                y, x = torch.meshgrid(torch.arange(0, shift_vector_gt.shape[1], step),
+                                      torch.arange(0, shift_vector_gt.shape[2], step), indexing="ij")
+                axes[0, 3].quiver(
+                    x.numpy(), y.numpy(),
+                    shift_gt_magnitude.numpy()[::step, ::step]*torch.cos(angle_gt[::step, ::step]).numpy(),
+                    shift_gt_magnitude.numpy()[::step, ::step]*torch.sin(angle_gt[::step, ::step]).numpy(),
+                     color="black", alpha=1.0, width=0.003, scale=20
                 )
 
                 # Plot predicted shift vector magnitude with arrows and original image as background
-                axes[1, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))  # Set original image as background
-                predicted_shift_magnitude = np.linalg.norm(regression_output_img, axis=0)
-                im2 = axes[1, 3].imshow(predicted_shift_magnitude, cmap='viridis',
-                                        alpha=0.6)  # Overlay magnitude with transparency
+                axes[1, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
+                im2 = axes[1, 3].imshow(predicted_shift_magnitude.numpy(), cmap='viridis', alpha=0.6)
                 axes[1, 3].set_title("Predicted Shift Vectors")
                 fig.colorbar(im2, ax=axes[1, 3], fraction=0.046, pad=0.04)
 
                 # Add arrows for predicted shift direction with transparency
                 axes[1, 3].quiver(
-                    x, y,
-                    np.cos(angle_pred[::step, ::step]),
-                    np.sin(angle_pred[::step, ::step]),
-                    scale=30,
-                    color="white",
-                    alpha=0.5  # Set transparency
+                    x.numpy(), y.numpy(),
+                    predicted_shift_magnitude.numpy()[::step, ::step]*torch.cos(angle_pred[::step, ::step]).numpy(),
+                    predicted_shift_magnitude.numpy()[::step, ::step]*torch.sin(angle_pred[::step, ::step]).numpy(),
+                     color="black", alpha=1.0, width=0.003, scale=20
                 )
 
-                # Remove any unused subplot (optional)
+                # Remove any unused subplot
                 axes[1, 0].axis('off')
                 fig.tight_layout()
 
@@ -335,11 +334,12 @@ class LightingSegmentor(L.LightningModule):
                 image_tensor = transforms.ToTensor()(image)
 
                 # Log the image to TensorBoard
-                self.logger.experiment.add_image(f"{phase}/segmentation_regression_output_{i}", image_tensor,
+                self.logger.experiment.add_image(f"{phase}/segmentation_regression_output_{self.val_visualization_idx}", image_tensor,
                                                  global_step=self.current_epoch)
 
                 # Close the buffer
                 buf.close()
+                self.val_visualization_idx += 1
 
         return total_loss
 
@@ -368,3 +368,6 @@ class LightingSegmentor(L.LightningModule):
             torch.Tensor: The loss value.
         """
         return self.shared_step(batch, batch_idx, "val")
+
+    def on_validation_end(self) -> None:
+        self.val_visualization_idx = 0
