@@ -174,10 +174,17 @@ class LightingSegmentor(L.LightningModule):
         num_pred_rooftop_pixels = preds_rooftop_mask.sum() + 1e-6  # Avoid division by zero
         regression_loss = regression_loss.sum() / num_pred_rooftop_pixels
 
-        # regularization loss
+        # # regularization loss for offset
+        # non_rooftop_mask = 1.0 - preds_rooftop_mask
+        # regression_output_magnitude = torch.norm(regression_output, dim=1, keepdim=True)
+        # regularization_loss = (regression_output_magnitude * non_rooftop_mask).sum() / (non_rooftop_mask.sum() + 1e-6)
+
+        # regularization loss for polar angle
         non_rooftop_mask = 1.0 - preds_rooftop_mask
-        regression_output_magnitude = torch.norm(regression_output, dim=1, keepdim=True)
-        regularization_loss = (regression_output_magnitude * non_rooftop_mask).sum() / (non_rooftop_mask.sum() + 1e-6)
+        regression_output_magnitude = torch.sqrt(
+            regression_output[:, 0, :, :] ** 2 + regression_output[:, 1, :, :] ** 2).unsqueeze(1)
+        regularization_loss = (regression_output_magnitude * non_rooftop_mask).sum() / (
+                    non_rooftop_mask.sum() + 1e-6)
 
         # Total loss (you can adjust the weighting if needed)
         total_loss = seg_loss + regression_loss + 0.1 * regularization_loss
@@ -242,6 +249,10 @@ class LightingSegmentor(L.LightningModule):
                 # Get shift vectors (ground truth for regression)
                 shift_vector_gt = shift_vectors[i].to("cpu").numpy()
 
+                # Compute the angle for visualization
+                angle_gt = np.arctan2(shift_vector_gt[1], shift_vector_gt[0])  # Angle in radians for ground truth
+                angle_pred = np.arctan2(regression_output_img[1], regression_output_img[0])  # Angle for prediction
+
                 # Plot the original image
                 fig, axes = plt.subplots(2, 4, figsize=(20, 10))
                 axes[0, 0].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
@@ -268,20 +279,44 @@ class LightingSegmentor(L.LightningModule):
                 axes[1, 1].set_title("Predicted Building Mask")
                 axes[1, 1].axis('off')
 
-                # Plot ground truth shift vector magnitude (for regression)
+                # Plot ground truth shift vector magnitude with arrows and original image as background
+                axes[1, 2].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))  # Set original image as background
                 shift_gt_magnitude = np.linalg.norm(shift_vector_gt, axis=0)
-                im1 = axes[1, 2].imshow(shift_gt_magnitude, cmap='viridis')
+                im1 = axes[1, 2].imshow(shift_gt_magnitude, cmap='viridis',
+                                        alpha=0.6)  # Overlay magnitude with transparency
                 axes[1, 2].set_title("Ground Truth Shift Vectors")
-                axes[1, 2].axis('off')
-                fig.colorbar(im1, ax=axes[1, 2], fraction=0.046,
-                             pad=0.04)  # Adding colorbar for ground truth shift vector
+                fig.colorbar(im1, ax=axes[1, 2], fraction=0.046, pad=0.04)
 
-                # Plot predicted shift vector magnitude (regression output)
+                # Add arrows for ground truth shift direction
+                # Add arrows for ground truth shift direction with transparency
+                step = 10  # Adjust step to control arrow density (5 plots every 5th pixel)
+                y, x = np.mgrid[0:shift_vector_gt.shape[1]:step, 0:shift_vector_gt.shape[2]:step]
+                axes[1, 2].quiver(
+                    x, y,
+                    np.cos(angle_gt[::step, ::step]),
+                    np.sin(angle_gt[::step, ::step]),
+                    scale=30,
+                    color="white",
+                    alpha=0.5  # Set transparency
+                )
+
+                # Plot predicted shift vector magnitude with arrows and original image as background
+                axes[1, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))  # Set original image as background
                 predicted_shift_magnitude = np.linalg.norm(regression_output_img, axis=0)
-                im2 = axes[1, 3].imshow(predicted_shift_magnitude, cmap='viridis')
+                im2 = axes[1, 3].imshow(predicted_shift_magnitude, cmap='viridis',
+                                        alpha=0.6)  # Overlay magnitude with transparency
                 axes[1, 3].set_title("Predicted Shift Vectors")
-                axes[1, 3].axis('off')
-                fig.colorbar(im2, ax=axes[1, 3], fraction=0.046, pad=0.04)  # Adding colorbar for predicted shift vector
+                fig.colorbar(im2, ax=axes[1, 3], fraction=0.046, pad=0.04)
+
+                # Add arrows for predicted shift direction with transparency
+                axes[1, 3].quiver(
+                    x, y,
+                    np.cos(angle_pred[::step, ::step]),
+                    np.sin(angle_pred[::step, ::step]),
+                    scale=30,
+                    color="white",
+                    alpha=0.5  # Set transparency
+                )
 
                 # Remove any unused subplot (optional)
                 axes[1, 0].axis('off')
