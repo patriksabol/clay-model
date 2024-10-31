@@ -25,6 +25,11 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 from PIL import Image
 import rasterio
+import warnings
+from rasterio.errors import NotGeoreferencedWarning
+
+# Suppress NotGeoreferencedWarning from rasterio
+warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
 
 class BuildingDataset(Dataset):
     """
@@ -98,12 +103,14 @@ class BuildingDataset(Dataset):
         label_shift = rasterio.open(self.label_shift_dir / self.label_shifts[idx]).read([1, 2])
         label_shift = label_shift.astype(np.float32)
         length = np.sqrt(label_shift[0, :, :] ** 2 + label_shift[1, :, :] ** 2)
+        length_copy = length.copy()
+        length_copy /= length_copy.shape[-1]  # Normalize by the image height
         length[length == 0] = 1  # This prevents division by zero
         cos_angle = label_shift[0, :, :] / length
         sin_angle = label_shift[1, :, :] / length
         cos_angle = np.nan_to_num(cos_angle, nan=0.0, posinf=0.0, neginf=0.0)
         sin_angle = np.nan_to_num(sin_angle, nan=0.0, posinf=0.0, neginf=0.0)
-        label_shift = np.stack((cos_angle, sin_angle), axis=0)
+        label_shift = np.stack((cos_angle, sin_angle, length_copy), axis=0)
 
         sample = {
             "orto": self.transform(torch.tensor(orto).permute(2, 0, 1)),

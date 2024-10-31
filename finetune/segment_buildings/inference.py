@@ -1,4 +1,6 @@
 import argparse
+import warnings
+
 import torch
 import os
 import yaml
@@ -6,6 +8,10 @@ import rasterio
 from PIL import Image
 from matplotlib import pyplot as plt
 import sys
+from rasterio.transform import from_origin
+from rasterio.errors import NotGeoreferencedWarning
+# Suppress the NotGeoreferencedWarning
+warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from finetune.segment.models.buildings.model import LightingSegmentor  # noqa: F401
 from torchvision.transforms import v2
@@ -21,18 +27,33 @@ def load_image(image_path):
     Returns:
         Tuple[torch.Tensor, dict]: Preprocessed image tensor and georeferencing info.
     """
-    # Open the image using rasterio to preserve georeferencing information
-    with rasterio.open(image_path) as dataset:
-        image = dataset.read([1, 2, 3]).astype('float32')  # Assuming the input is 3 channels
-        image = image / 255.0  # Normalize the image to [0, 1]
-        transform = dataset.transform
-        crs = dataset.crs
+    # Initialize transform and CRS placeholders
+    transform = None
+    crs = None
+
+    # Catch warnings for NotGeoreferencedWarning
+    with warnings.catch_warnings(record=True) as w:
+        warnings.filterwarnings("always", category=NotGeoreferencedWarning)
+
+        # Open the image using rasterio
+        with rasterio.open(image_path) as dataset:
+            image = dataset.read([1, 2, 3]).astype('float32')  # Assuming the input is 3 channels
+            image = image / 255.0  # Normalize the image to [0, 1]
+            transform = dataset.transform
+            crs = dataset.crs
+
+            # Check if NotGeoreferencedWarning was raised
+            if any(isinstance(warning.message, NotGeoreferencedWarning) for warning in w):
+                # Modify the transform for correct orientation if no georeferencing info is present
+                pixel_size = 1  # Adjust as needed for the scale
+                transform = from_origin(0, image.shape[1], pixel_size, -pixel_size)
+                crs = None  # Set CRS to None if not available
 
     # Apply ImageNet normalization
     preprocess = v2.Compose([
         v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    image_tensor = preprocess(torch.tensor(image))  # (H, W, C) to (C, H, W)
+    image_tensor = preprocess(torch.tensor(image))  # Convert to tensor and normalize
     return image_tensor.unsqueeze(0), {'transform': transform, 'crs': crs}  # Add batch dimension
 
 
@@ -73,6 +94,7 @@ def save_results(segmentation_output, regression_output, georef_info, save_dir, 
 
     # Get the georeferencing information
     transform = georef_info['transform']
+    print(transform)
     crs = georef_info['crs']
     height, width = segmentation_output.shape[-2], segmentation_output.shape[-1]
 

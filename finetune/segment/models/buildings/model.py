@@ -17,6 +17,11 @@ import io
 from PIL import Image
 import torchvision.transforms as transforms
 
+class CustomActivation(nn.Module):
+    def forward(self, x):
+        sincos = torch.tanh(x[:, 0:2, :, :])  # Range [-1, 1]
+        length = torch.sigmoid(x[:, 2:3, :, :])  # Range [0, ∞)
+        return torch.cat((sincos, length), dim=1)
 class LightingSegmentor(L.LightningModule):
     """
     LightningModule for segmentation tasks, utilizing Clay Segmentor.
@@ -59,8 +64,8 @@ class LightingSegmentor(L.LightningModule):
             nn.Conv2d(out_channels + 2,  # because concatenate segmentation features with shift vectors
                       out_channels, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(out_channels, 2, kernel_size=3, padding=1),  # Output x_shift and y_shift
-            nn.Tanh()
+            nn.Conv2d(out_channels, 3, kernel_size=3, padding=1),  # Output x_shift and y_shift
+            CustomActivation()
         )
 
         # Loss functions
@@ -190,7 +195,7 @@ class LightingSegmentor(L.LightningModule):
                     non_rooftop_mask.sum() + 1e-6)
 
         # Total loss (you can adjust the weighting if needed)
-        total_loss = seg_loss + regression_loss + 0.1 * regularization_loss
+        total_loss = seg_loss + regression_loss + 0.0001 * regularization_loss
 
         # Compute metrics for segmentation
         # Apply sigmoid to get probabilities
@@ -250,75 +255,93 @@ class LightingSegmentor(L.LightningModule):
                 preds_rooftop = (torch.sigmoid(segmentation_output[:, 0, :, :]) > 0.5).int().to("cpu")[i]
                 preds_building = (torch.sigmoid(segmentation_output[:, 1, :, :]) > 0.5).int().to("cpu")[i]
 
-                regression_output_img = regression_output[i].detach().cpu()  # Use torch tensor
+                regression_pred = regression_output[i].detach().cpu()  # Use torch tensor
                 shift_vector_gt = shift_vectors[i].to("cpu")  # Use torch tensor
 
-                # Compute magnitude and angle using torch
-                shift_gt_magnitude = torch.norm(shift_vector_gt, dim=0)
-                angle_gt = torch.atan2(shift_vector_gt[1], shift_vector_gt[0])
+                ###################
+                cos_pred = regression_pred[0]
+                sin_pred = regression_pred[1]
+                length_pred = regression_pred[2] * regression_pred.shape[-1]
 
-                predicted_shift_magnitude = torch.norm(regression_output_img, dim=0)
-                angle_pred = torch.atan2(regression_output_img[1], regression_output_img[0])
+                x_component_pred = length_pred * cos_pred
+                y_component_pred = length_pred * sin_pred
+
+                cos_gt = shift_vector_gt[0]
+                sin_gt = shift_vector_gt[1]
+                length_gt = shift_vector_gt[2] * shift_vector_gt.shape[-1]
+
+                x_component_gt = length_gt * cos_gt
+                y_component_gt = length_gt * sin_gt
+                ##############################
+                # Compute magnitude and angle using torch
+                shift_gt_magnitude = torch.sqrt(x_component_gt**2 + y_component_gt**2)
+
+                shift_pred_magnitude = torch.sqrt(x_component_pred**2 + y_component_pred**2)
 
                 # Plot the original image
                 fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-                axes[0, 0].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
-                axes[0, 0].set_title("Original Image")
-                axes[0, 0].axis('off')
+                axes[0, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
+                axes[0, 3].set_title("Original Image")
+                axes[0, 3].axis('off')
+
+                # Plot the original image
+                axes[1, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
+                axes[1, 3].set_title("Original Image")
+                axes[1, 3].axis('off')
 
                 # Plot ground truth rooftop mask
-                axes[0, 1].imshow(rooftop_mask.numpy(), cmap='gray')
-                axes[0, 1].set_title("Ground Truth Rooftop Mask")
-                axes[0, 1].axis('off')
+                axes[0, 0].imshow(rooftop_mask.numpy(), cmap='gray')
+                axes[0, 0].set_title("Ground Truth Rooftop Mask")
+                axes[0, 0].axis('off')
 
                 # Plot predicted rooftop mask
-                axes[1, 1].imshow(preds_rooftop.numpy(), cmap='gray')
-                axes[1, 1].set_title("Predicted Rooftop Mask")
-                axes[1, 1].axis('off')
+                axes[1, 0].imshow(preds_rooftop.numpy(), cmap='gray')
+                axes[1, 0].set_title("Predicted Rooftop Mask")
+                axes[1, 0].axis('off')
 
                 # Plot ground truth building mask
-                axes[0, 2].imshow(building_mask.numpy(), cmap='gray')
-                axes[0, 2].set_title("Ground Truth Building Mask")
-                axes[0, 2].axis('off')
+                axes[0, 1].imshow(building_mask.numpy(), cmap='gray')
+                axes[0, 1].set_title("Ground Truth Building Mask")
+                axes[0, 1].axis('off')
 
                 # Plot predicted building mask
-                axes[1, 2].imshow(preds_building.numpy(), cmap='gray')
-                axes[1, 2].set_title("Predicted Building Mask")
-                axes[1, 2].axis('off')
+                axes[1, 1].imshow(preds_building.numpy(), cmap='gray')
+                axes[1, 1].set_title("Predicted Building Mask")
+                axes[1, 1].axis('off')
 
                 # Plot ground truth shift vector magnitude with arrows and original image as background
-                axes[0, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
-                im1 = axes[0, 3].imshow(shift_gt_magnitude.numpy(), cmap='viridis', alpha=0.6)
-                axes[0, 3].set_title("Ground Truth Shift Vectors")
-                fig.colorbar(im1, ax=axes[0, 3], fraction=0.046, pad=0.04)
+                axes[0, 2].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
+                im1 = axes[0, 2].imshow(shift_gt_magnitude.numpy(), cmap='viridis', alpha=0.6, vmin=0, vmax=shift_gt_magnitude.max().numpy())
+                axes[0, 2].set_title("Ground Truth Shift Vectors")
+                fig.colorbar(im1, ax=axes[0, 2], fraction=0.046, pad=0.04)
 
                 # Add arrows for ground truth shift direction with transparency
                 step = 15  # Control arrow density
                 y, x = torch.meshgrid(torch.arange(0, shift_vector_gt.shape[1], step),
                                       torch.arange(0, shift_vector_gt.shape[2], step), indexing="ij")
-                axes[0, 3].quiver(
+                axes[0, 2].quiver(
                     x.numpy(), y.numpy(),
-                    shift_gt_magnitude.numpy()[::step, ::step]*torch.cos(angle_gt[::step, ::step]).numpy(),
-                    shift_gt_magnitude.numpy()[::step, ::step]*torch.sin(angle_gt[::step, ::step]).numpy(),
-                     color="black", alpha=1.0, width=0.003, scale=20
+                    -x_component_gt[::step, ::step].numpy(),
+                    y_component_gt[::step, ::step].numpy(),
+                     color="black", alpha=1.0, width=0.003, scale_units="xy", scale=1
                 )
 
                 # Plot predicted shift vector magnitude with arrows and original image as background
-                axes[1, 3].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
-                im2 = axes[1, 3].imshow(predicted_shift_magnitude.numpy(), cmap='viridis', alpha=0.6)
-                axes[1, 3].set_title("Predicted Shift Vectors")
-                fig.colorbar(im2, ax=axes[1, 3], fraction=0.046, pad=0.04)
+                axes[1, 2].imshow(np.transpose(original_image.numpy(), (1, 2, 0)))
+                im2 = axes[1, 2].imshow(shift_pred_magnitude.numpy(), cmap='viridis', alpha=0.6, vmin=0, vmax=shift_gt_magnitude.max().numpy())
+                axes[1, 2].set_title("Predicted Shift Vectors")
+                fig.colorbar(im2, ax=axes[1, 2], fraction=0.046, pad=0.04)
 
                 # Add arrows for predicted shift direction with transparency
-                axes[1, 3].quiver(
+                axes[1, 2].quiver(
                     x.numpy(), y.numpy(),
-                    predicted_shift_magnitude.numpy()[::step, ::step]*torch.cos(angle_pred[::step, ::step]).numpy(),
-                    predicted_shift_magnitude.numpy()[::step, ::step]*torch.sin(angle_pred[::step, ::step]).numpy(),
-                     color="black", alpha=1.0, width=0.003, scale=20
+                    -x_component_pred[::step, ::step].numpy(),
+                    y_component_pred[::step, ::step].numpy(),
+                     color="black", alpha=1.0, width=0.003, scale_units="xy", scale=1
                 )
 
                 # Remove any unused subplot
-                axes[1, 0].axis('off')
+                axes[1, 3].axis('off')
                 fig.tight_layout()
 
                 # Save the plot to a buffer
