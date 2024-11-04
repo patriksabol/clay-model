@@ -9,11 +9,11 @@ from PIL import Image
 from affine import Affine
 from matplotlib import pyplot as plt
 import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from rasterio.transform import from_origin
 from rasterio.errors import NotGeoreferencedWarning
 # Suppress the NotGeoreferencedWarning
 warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from finetune.segment.models.buildings.model import LightingSegmentor  # noqa: F401
 from torchvision.transforms import v2
 

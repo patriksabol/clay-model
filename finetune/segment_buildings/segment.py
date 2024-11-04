@@ -11,7 +11,9 @@ References:
 """
 
 from lightning.pytorch.cli import LightningCLI
-
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from finetune.segment.datamodules.buildings_datamodule import BuildingDataModule  # noqa: F401
 from finetune.segment.models.buildings.model import LightingSegmentor  # noqa: F401
 
