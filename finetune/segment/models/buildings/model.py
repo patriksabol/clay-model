@@ -324,7 +324,7 @@ class LightingSegmentor(L.LightningModule):
                                       torch.arange(0, shift_vector_gt.shape[2], step), indexing="ij")
                 axes[0, 2].quiver(
                     x.numpy(), y.numpy(),
-                    -x_component_gt[::step, ::step].numpy(),
+                    x_component_gt[::step, ::step].numpy(),
                     y_component_gt[::step, ::step].numpy(),
                      color="black", alpha=1.0, width=0.003, scale_units="xy", scale=1
                 )
@@ -338,7 +338,7 @@ class LightingSegmentor(L.LightningModule):
                 # Add arrows for predicted shift direction with transparency
                 axes[1, 2].quiver(
                     x.numpy(), y.numpy(),
-                    -x_component_pred[::step, ::step].numpy(),
+                    x_component_pred[::step, ::step].numpy(),
                     y_component_pred[::step, ::step].numpy(),
                      color="black", alpha=1.0, width=0.003, scale_units="xy", scale=1
                 )

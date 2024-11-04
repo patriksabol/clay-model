@@ -6,6 +6,7 @@ import os
 import yaml
 import rasterio
 from PIL import Image
+from affine import Affine
 from matplotlib import pyplot as plt
 import sys
 from rasterio.transform import from_origin
@@ -44,9 +45,9 @@ def load_image(image_path):
 
             # Check if NotGeoreferencedWarning was raised
             if any(isinstance(warning.message, NotGeoreferencedWarning) for warning in w):
-                # Modify the transform for correct orientation if no georeferencing info is present
-                pixel_size = 1  # Adjust as needed for the scale
-                transform = from_origin(0, image.shape[1], pixel_size, -pixel_size)
+                # Create a new transform with the i (or c) component negated
+                transform = Affine(transform.a, transform.b, transform.c,
+                                   transform.d, -transform.e, transform.f)
                 crs = None  # Set CRS to None if not available
 
     # Apply ImageNet normalization
@@ -75,7 +76,10 @@ def run_inference(model, image_tensor):
     with torch.no_grad():
         segmentation_output, regression_output = model(sample)
         segmentation_output = torch.sigmoid(segmentation_output)
-        regression_output = regression_output * segmentation_output.shape[-1]  # Scale regression output
+        print(regression_output.shape)
+        regression_output[:,-1] = regression_output[:,-1] * segmentation_output.shape[-1]  # Scale regression output
+        regression_output[:, 0] = regression_output[:, 0] * regression_output[:,-1]  # Scale regression output
+        regression_output[:, 1] = regression_output[:, 1] * regression_output[:,-1]  # Scale regression output
     return segmentation_output, regression_output
 
 
@@ -93,8 +97,9 @@ def save_results(segmentation_output, regression_output, georef_info, save_dir, 
     os.makedirs(save_dir, exist_ok=True)
 
     # Get the georeferencing information
+    # Assuming transform is an Affine object from georef_info
     transform = georef_info['transform']
-    print(transform)
+
     crs = georef_info['crs']
     height, width = segmentation_output.shape[-2], segmentation_output.shape[-1]
 
@@ -122,13 +127,14 @@ def save_results(segmentation_output, regression_output, georef_info, save_dir, 
             driver='GTiff',
             height=height,
             width=width,
-            count=2,  # Two channels for regression (x_shift, y_shift)
+            count=3,  # Two channels for regression (x_shift, y_shift)
             dtype=reg_image.dtype,
             crs=crs,
             transform=transform
     ) as dst:
         dst.write(reg_image[0], 1)  # Write the x_shift channel
         dst.write(reg_image[1], 2)  # Write the y_shift channel
+        dst.write(reg_image[2], 3)  # Write the y_shift channel
 
 
 def load_model_from_checkpoint(config, checkpoint_path):
