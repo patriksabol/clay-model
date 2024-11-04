@@ -48,11 +48,26 @@ class BuildingDataset(Dataset):
         self.label_building_dir = Path(label_building_dir)
         self.label_shift_dir = Path(label_shift_dir)
 
-        # Load chip and label file names
-        self.ortos = [orto_path.name for orto_path in self.orto_dir.glob("*.tif")]
-        self.label_roofs = [label_roof_path.name for label_roof_path in self.label_roof_dir.glob("*.tif")]
-        self.label_buildings = [label_building_path.name for label_building_path in self.label_building_dir.glob("*.tif")]
-        self.label_shifts = [label_shift_path.name for label_shift_path in self.label_shift_dir.glob("*.tif")]
+        # Load ortho image filenames and filter based on existence of corresponding label files
+        self.ortos = []
+        self.label_roofs = []
+        self.label_buildings = []
+        self.label_shifts = []
+
+        for orto_path in self.orto_dir.glob("*.tif"):
+            orto_filename = orto_path.name
+            label_roof_path = self.label_roof_dir / orto_filename
+            label_building_path = self.label_building_dir / orto_filename
+            label_shift_path = self.label_shift_dir / orto_filename
+
+            # Check if all label files exist for the ortho image
+            if label_roof_path.exists() and label_building_path.exists() and label_shift_path.exists():
+                self.ortos.append(orto_filename)
+                self.label_roofs.append(label_roof_path)
+                self.label_buildings.append(label_building_path)
+                self.label_shifts.append(label_shift_path)
+            else:
+                print(f"Warning: Missing labels for {orto_filename}")
 
         self.transform = self.create_transforms(
             mean=[0.485, 0.456, 0.406],
