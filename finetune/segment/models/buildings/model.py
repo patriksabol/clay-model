@@ -16,7 +16,8 @@ from torchmetrics.classification import BinaryJaccardIndex, BinaryF1Score
 import io
 from PIL import Image
 import torchvision.transforms as transforms
-
+import matplotlib
+matplotlib.use('Agg')
 
 class CustomActivation(nn.Module):
     def forward(self, x):
