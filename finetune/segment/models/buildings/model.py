@@ -17,11 +17,14 @@ import io
 from PIL import Image
 import torchvision.transforms as transforms
 
+
 class CustomActivation(nn.Module):
     def forward(self, x):
         sincos = torch.tanh(x[:, 0:2, :, :])  # Range [-1, 1]
         length = torch.sigmoid(x[:, 2:3, :, :])  # Range [0, ∞)
         return torch.cat((sincos, length), dim=1)
+
+
 class LightingSegmentor(L.LightningModule):
     """
     LightningModule for segmentation tasks, utilizing Clay Segmentor.
