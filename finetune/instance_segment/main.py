@@ -12,7 +12,7 @@ References:
 
 from lightning.pytorch.cli import LightningCLI
 
-from finetune.instance_segment.datamodule import BuildingDataModule  # noqa: F401
+from finetune.instance_segment.datamodule_bonai import BuildingDataModule  # noqa: F401
 from finetune.instance_segment.model import MaskRCNNLightningModule  # noqa: F401
 
 
