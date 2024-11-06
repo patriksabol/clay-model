@@ -10,6 +10,9 @@ from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 import matplotlib
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from finetune.instance_segment.CustomROIHeads import CustomMaskRCNN
 
 matplotlib.use('Agg')
