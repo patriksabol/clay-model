@@ -1,3 +1,5 @@
+import io
+
 import lightning as L
 import torchvision
 from torchvision import transforms
@@ -5,17 +7,28 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 import torch
 from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 import matplotlib
+
+from finetune.instance_segment.CustomROIHeads import CustomMaskRCNN
+
 matplotlib.use('Agg')
 class MaskRCNNLightningModule(L.LightningModule):
     def __init__(self, num_classes=3, lr=1e-3):
         super().__init__()
         self.save_hyperparameters()
 
-        # Load a pre-trained Mask R-CNN model
-        self.model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+        # Load a pre-trained backbone
+        backbone = resnet_fpn_backbone('resnet50', pretrained=True)
 
-        # Replace the classifier with a new one for your dataset
+        # Create the custom Mask R-CNN model
+        self.model = CustomMaskRCNN(
+            backbone=backbone,
+            num_classes=num_classes,
+            # Additional arguments if needed
+        )
+
+        # Replace the box predictor with a new one for your dataset
         in_features = self.model.roi_heads.box_predictor.cls_score.in_features
         self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
@@ -23,7 +36,9 @@ class MaskRCNNLightningModule(L.LightningModule):
         in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
         hidden_layer = 256
         self.model.roi_heads.mask_predictor = MaskRCNNPredictor(
-            in_features_mask, hidden_layer, num_classes
+            in_channels=in_features_mask,
+            dim_reduced=hidden_layer,
+            num_classes=num_classes,
         )
 
         # Learning rate
@@ -57,6 +72,7 @@ class MaskRCNNLightningModule(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         images, targets = batch
         images = [image.to(self.device) for image in images]
+        targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
         outputs = self.model(images)
 
         class_names = {1: "roof", 2: "building"}
@@ -75,24 +91,40 @@ class MaskRCNNLightningModule(L.LightningModule):
                 masks_gt = target["masks"]
                 labels_gt = target["labels"]
                 boxes_gt = target["boxes"]
+                offsets_gt_norm = target["offsets"]
+
+                # Denormalize ground truth offsets
+                widths_gt = boxes_gt[:, 2] - boxes_gt[:, 0]
+                heights_gt = boxes_gt[:, 3] - boxes_gt[:, 1]
+                widths_gt = torch.clamp(widths_gt, min=1e-6)
+                heights_gt = torch.clamp(heights_gt, min=1e-6)
+                offsets_gt = offsets_gt_norm.clone()
+                offsets_gt[:, 0] = offsets_gt[:, 0] * widths_gt
+                offsets_gt[:, 1] = offsets_gt[:, 1] * heights_gt
 
                 masks_pred = output["masks"]
                 labels_pred = output["labels"]
                 boxes_pred = output["boxes"]
                 scores_pred = output["scores"]
+                offsets_pred = output["offsets"]
 
                 score_threshold = 0.5
                 keep = scores_pred >= score_threshold
                 masks_pred = masks_pred[keep]
                 labels_pred = labels_pred[keep]
                 boxes_pred = boxes_pred[keep]
+                offsets_pred = offsets_pred[keep]
 
                 # Visualize Ground Truth
                 fig_gt = visualize_masks(image, masks_gt, labels_gt, boxes_gt,
-                                         class_colors, class_names, title="Ground Truth Masks and Boxes")
+                                         offsets=offsets_gt,
+                                         class_colors=class_colors,
+                                         class_names=class_names,
+                                         title="Ground Truth Masks and Boxes")
 
                 # Visualize Predictions
                 fig_pred = visualize_masks(image, masks_pred, labels_pred, boxes_pred,
+                                           offsets_pred,
                                            class_colors, class_names, title="Predicted Masks and Boxes")
 
                 # Log images to TensorBoard
@@ -112,9 +144,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
-import io
 import matplotlib.patches as patches
-def visualize_masks(image_tensor, masks, labels, boxes, class_colors, class_names, title):
+
+def visualize_masks(image_tensor, masks, labels, boxes, offsets, class_colors, class_names, title):
     # Denormalize the image
     image = image_tensor.cpu()
     image = image * torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1) + torch.tensor(
@@ -155,7 +187,7 @@ def visualize_masks(image_tensor, masks, labels, boxes, class_colors, class_name
     ax.set_title(title)
     ax.axis('off')
 
-    # Draw bounding boxes
+    # Draw bounding boxes and arrows
     for idx in range(len(boxes)):
         box = boxes[idx].cpu().numpy()
         label = labels[idx].item()
@@ -173,6 +205,20 @@ def visualize_masks(image_tensor, masks, labels, boxes, class_colors, class_name
         # Add label text
         class_name = class_names.get(label, f"Class {label}")
         ax.text(x_min, y_min - 5, class_name, color=color, fontsize=6)
+
+        # Draw the offset arrow if offsets are provided
+        if offsets is not None:
+            offset = offsets[idx].cpu().numpy()
+            mask = masks[idx].cpu().numpy().squeeze()
+            mask_indices = np.argwhere(mask > 0.5)
+            if mask_indices.size > 0:
+                y_center, x_center = mask_indices.mean(axis=0)
+                # Adjust the scale if needed
+                scale_factor = 1.0  # Adjust this value to scale the arrow length
+                dx = offset[0] * scale_factor
+                dy = offset[1] * scale_factor
+                # Draw the arrow
+                ax.quiver(x_center, y_center, -dx, -dy, angles='xy', scale_units='xy', scale=1, color='red', width=0.005)
 
     plt.tight_layout()
 

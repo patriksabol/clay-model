@@ -78,7 +78,7 @@ class BuildingDataset(Dataset):
 
     def __getitem__(self, idx):
         # Load image
-        image = Image.open(self.images_paths[idx])
+        image = Image.open(self.images_paths[idx]).convert("RGB")
         image = np.array(image).astype(np.float32) / 255.0  # H x W x C
 
         # Convert image to tensor and normalize
@@ -93,16 +93,18 @@ class BuildingDataset(Dataset):
         masks = []
         boxes = []
         labels = []
+        offsets = []
 
         for annot in annotation['annotations']:
             if annot['ignore'] == 0.0:
                 roof = annot['roof']
                 footprint = annot['footprint']
+                offset = annot['offset']  # Read the offset
 
                 # Create mask for the roof
                 mask = np.zeros((img.shape[1], img.shape[2]), dtype=np.uint8)
                 roof_polygon = np.array(roof).reshape(-1, 2)
-                cv2.fillPoly(mask, [roof_polygon], 1)
+                cv2.fillPoly(mask, [roof_polygon.astype(np.int32)], 1)
                 masks.append(mask)
 
                 # Calculate bounding box combining footprint and roof
@@ -113,15 +115,36 @@ class BuildingDataset(Dataset):
 
                 labels.append(1)  # Assuming 1 is the label for buildings
 
+                # Calculate width and height of the bounding box
+                box_width = x_max - x_min
+                box_height = y_max - y_min
+
+                # Avoid division by zero
+                if box_width == 0:
+                    box_width = 1e-6
+                if box_height == 0:
+                    box_height = 1e-6
+
+                # Normalize the offset by the width and height of the bounding box
+                normalized_offset_x = offset[0] / box_width
+                normalized_offset_y = offset[1] / box_height
+                normalized_offset = [normalized_offset_x, normalized_offset_y]
+
+                # Append the normalized offset
+                offsets.append(normalized_offset)
+
+        # Convert lists to tensors
         masks = torch.tensor(np.array(masks), dtype=torch.uint8)
         boxes = torch.tensor(boxes, dtype=torch.float32)
         labels = torch.tensor(labels, dtype=torch.int64)
+        offsets = torch.tensor(offsets, dtype=torch.float32)  # [num_objects, 2]
 
         # Prepare target in the required format
         target = {
             "boxes": tv_tensors.BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img)),
             "masks": tv_tensors.Mask(masks),
             "labels": labels,
+            "offsets": offsets,  # Include normalized offsets in the target
             "image_id": torch.tensor([idx]),
             "area": (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]),
             "iscrowd": torch.zeros((len(labels),), dtype=torch.int64)
